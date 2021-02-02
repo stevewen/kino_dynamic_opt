@@ -178,6 +178,8 @@ class MomentumKinematicsOptimizer(object):
     def __init__(self):
         self.q_init = None
         self.dq_init = None
+        self.last_dq = None
+        self.flight_time = 0.
         self.reg_orientation = 1e-2
         self.reg_joint_position = 2.
         self.joint_des = None
@@ -329,6 +331,7 @@ class MomentumKinematicsOptimizer(object):
 
         self.q_init = q.copy()
         self.dq_init = dq.copy()
+        self.last_dq = dq.copy()
 
     def optimize(self, init_state, contact_sequence, dynamic_sequence, plotting=False):
         self.init_state = init_state
@@ -384,7 +387,19 @@ class MomentumKinematicsOptimizer(object):
         for it in range(self.num_time_steps):
             quad_goal = se3.Quaternion(se3.rpy.rpyToMatrix(np.matrix(self.base_des[:,it]).T))
             quad_q = se3.Quaternion(float(q[6]), float(q[3]), float(q[4]), float(q[5]))
-            amom_ref = self.reg_orientation * se3.log((quad_goal * quad_q.inverse()).matrix()) + self.amom_dyn[it]
+
+            # check if this instance belongs to the flight phase and set the momentums accordingly
+            if np.all((self.endeff_contact[it]==0)):
+                lmom_ref = (self.inv_kin.J[0:3, :].dot(self.last_dq)).reshape(-1)
+                lmom_ref[2] -= self.inv_kin.mass * 9.81 * (it - self.flight_time)* self.dt
+                amom_ref = (self.inv_kin.J[3:6, :].dot(self.last_dq)).reshape(-1)
+                is_flight_phase = True
+                print("lmom:",lmom_ref)
+                print("amom:",amom_ref)
+            else:
+                lmom_ref = self.lmom_dyn[it]
+                amom_ref = (self.reg_orientation * se3.log((quad_goal * quad_q.inverse()).matrix()).T + self.amom_dyn[it]).reshape(-1)
+                is_flight_phase = False
 
             joint_regularization_ref = self.reg_joint_position * (self.joint_des[:,it] - q[7 : ])
 
@@ -392,10 +407,17 @@ class MomentumKinematicsOptimizer(object):
             self.inv_kin.forward_robot(q, dq)
             self.fill_kinematic_result(it, q, dq)
 
+            # Compute the inverse kinematics
             dq = self.inv_kin.compute(
-                    q, dq, self.com_dyn[it], self.lmom_dyn[it], amom_ref,
+                    q, dq, self.com_dyn[it], lmom_ref, amom_ref,
                     self.endeff_pos_ref[it], self.endeff_vel_ref[it],
-                    self.endeff_contact[it], joint_regularization_ref)
+                    self.endeff_contact[it], joint_regularization_ref,
+                    is_flight_phase)
+
+            # Store previous dq
+            if not is_flight_phase:
+                self.flight_time = it
+                self.last_dq = dq
 
             # Integrate to the next state.
             q = se3.integrate(self.robot.model, q, dq * self.dt)

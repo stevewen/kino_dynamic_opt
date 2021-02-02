@@ -75,7 +75,8 @@ class PointContactInverseKinematics(object):
         #print "jac:\n",self.J,"\n\n"
 
 
-    def fill_vel_des(self, q, dq, com_ref, lmom_ref, amom_ref, endeff_pos_ref, endeff_vel_ref, joint_regularization_ref):
+    def fill_vel_des(self, q, dq, com_ref, lmom_ref, amom_ref, endeff_pos_ref,
+                     endeff_vel_ref, joint_regularization_ref):
         self.vel_des[:3] = (lmom_ref + self.p_com_tracking * (com_ref - self.robot.com(q).T)).T
         self.vel_des[3:6] = amom_ref
 
@@ -114,7 +115,9 @@ class PointContactInverseKinematics(object):
         self.last_q = q.copy()
         self.last_dq = dq.copy()
 
-    def compute(self, q, dq, com_ref, lmom_ref, amom_ref, endeff_pos_ref, endeff_vel_ref, endeff_contact, joint_regularization_ref):
+    def compute(self, q, dq, com_ref, lmom_ref, amom_ref, endeff_pos_ref,
+                endeff_vel_ref, endeff_contact, joint_regularization_ref,
+                is_flight_phase=False):
         '''
         Arguments:
             q: Current robot state
@@ -129,7 +132,8 @@ class PointContactInverseKinematics(object):
             self.forward_robot(q, dq)
 
         self.fill_jacobians(q)
-        self.fill_vel_des(q, dq, com_ref, lmom_ref, amom_ref, endeff_pos_ref, endeff_vel_ref, joint_regularization_ref)
+        self.fill_vel_des(q, dq, com_ref, lmom_ref, amom_ref, endeff_pos_ref,
+                          endeff_vel_ref, joint_regularization_ref)
         self.fill_weights(endeff_contact)
 
         self.forwarded_robot = False
